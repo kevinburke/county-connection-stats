@@ -1,0 +1,14 @@
+# Build artifacts
+bin/
+
+# Data files
+vehicle-tracking.tsv
+var/
+
+# API response debugging
+response.bin
+
+# API token (should be in vault, not in repo)
+token
+/analyze-historic
+/.claude
