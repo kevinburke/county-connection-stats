@@ -1062,6 +1062,19 @@ const htmlTemplate = `<!DOCTYPE html>
         {{else}}
         <p class="no-data">No buses currently active (or tracking data unavailable)</p>
         {{end}}
+        <p><b>Why this matters:</b> Both of these routes build
+        in 15-20 minutes of downtime into their schedules <a
+        href="https://www.seamlessbayarea.org/blog/2025/11/7/changes-to-an-east-bay-bus-route-should-focus-on-frequency-improved-connections">to
+        wirelessly recharge battery electric buses at BART</a>. However, the
+        battery electric buses break down so often that they rarely ever run.
+        If County Connection would commit to running diesel buses instead of
+        battery electric buses, they could run bus service more frequently.</p>
+
+        <p>
+        Other bus agencies that have reduced headways from 45 to 30 minutes 
+        (the 5 bus) or from 15 to 10 minutes (the 4 bus) have seen ridership
+        increases of 10-25%% on those routes.
+        </p>
     </div>
 
     <div class="section">
