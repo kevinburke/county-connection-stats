@@ -9,7 +9,20 @@ build:
 .PHONY: build-local
 build-local:
 	mkdir -p bin
-	go build -trimpath -o bin/tracker-local ./cmd/tracker
+	go build -trimpath -o bin/tracker ./cmd/tracker
+
+.PHONY: tracker
+tracker:
+	mkdir -p bin/amd64
+	GOOS=linux GOARCH=amd64 go build -trimpath -o bin/amd64/tracker ./cmd/tracker
+
+.PHONY: dashboard
+dashboard:
+	mkdir -p bin/amd64
+	GOOS=linux GOARCH=amd64 go build -trimpath -o bin/amd64/dashboard ./cmd/dashboard
+
+.PHONY: linux-amd64
+linux-amd64: tracker dashboard
 
 .PHONY: run
 run:
@@ -32,9 +45,9 @@ TRACKER_PATH ?= /home/county-connection/var/data/vehicle-tracking.tsv
 sync-tracking:
 	scp $(TRACKER_HOST):$(TRACKER_PATH) vehicle-tracking.tsv
 
-.PHONY: dashboard
-dashboard:
+.PHONY: dashboard-run
+dashboard-run:
 	go run -trimpath ./cmd/dashboard
 
 .PHONY: dashboard-sync
-dashboard-sync: sync-tracking dashboard
+dashboard-sync: sync-tracking dashboard-run

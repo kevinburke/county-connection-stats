@@ -157,7 +157,7 @@ func main() {
 
 	data := DashboardData{
 		GeneratedAt: time.Now().In(pacificTZ),
-		Routes:      *routesFlag,
+		Routes:      strings.ReplaceAll(*routesFlag, ",", ", "),
 	}
 
 	// Load live buses and recent trip data from tracking file
