@@ -53,7 +53,7 @@ dashboard-run:
 dashboard-sync: sync-tracking dashboard-run
 
 .PHONY: serve
-serve: dashboard-run
+serve: dashboard-sync
 	@echo "Serving dashboard at http://localhost:8080/var/dashboard.html"
 	python3 -m http.server 8080
 
