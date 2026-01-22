@@ -248,7 +248,7 @@ func printDayOfWeekReport(dayStats map[string]*DayStats, vehicleStats map[string
 		dowStats[ds.Weekday] = stat
 	}
 
-	fmt.Println("\n=== Day of Week Analysis ===\n")
+	fmt.Println("\n=== Day of Week Analysis ===")
 	fmt.Println("Day       | Days | Avg Trips | BEB Trips | Diesel Trips | Unique Vehicles")
 	fmt.Println("----------|------|-----------|-----------|--------------|----------------")
 
@@ -282,10 +282,10 @@ func printVehiclePatterns(vehicleStats map[string]*VehicleDayStats) {
 		return diesels[i].VehicleID < diesels[j].VehicleID
 	})
 
-	fmt.Println("\n\n=== Battery Electric Bus Patterns ===\n")
+	fmt.Println("\n\n=== Battery Electric Bus Patterns ===")
 	printVehicleList(bebs)
 
-	fmt.Println("\n\n=== Diesel Bus Patterns ===\n")
+	fmt.Println("\n\n=== Diesel Bus Patterns ===")
 	printVehicleList(diesels)
 }
 
@@ -342,7 +342,7 @@ func printWeekdayWeekendSummary(dayStats map[string]*DayStats) {
 		}
 	}
 
-	fmt.Println("\n\n=== Weekday vs Weekend Summary ===\n")
+	fmt.Println("\n\n=== Weekday vs Weekend Summary ===")
 	fmt.Printf("Period   | Days | Avg Trips/Day | Total BEB | Total Diesel | BEB %% | Diesel %%\n")
 	fmt.Println("---------|------|---------------|-----------|--------------|--------|----------")
 
@@ -407,7 +407,7 @@ type WeekendBEBRecord struct {
 }
 
 func printWeekendBEBs(dayStats map[string]*DayStats) {
-	fmt.Println("\n\n=== BEB Weekend Service (All Instances) ===\n")
+	fmt.Println("\n\n=== BEB Weekend Service (All Instances) ===")
 	fmt.Println("Date       | Day | Vehicle | Trips")
 	fmt.Println("-----------|-----|---------|------")
 

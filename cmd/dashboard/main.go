@@ -73,6 +73,12 @@ type DashboardData struct {
 	DataEndDate      string
 	LastWeekendBEB   string // Last date a BEB ran on weekend, empty if never
 	LastWeekendBEBID string // Vehicle ID of the BEB
+
+	// Fields for "BEB drought" display - shown when no BEB has run for 30+ days
+	LastAnyBEB       string // Last date any BEB ran, empty if never
+	LastAnyBEBID     string // Vehicle ID of the BEB
+	DaysSinceLastBEB int    // Number of days since last BEB run
+	ShowBEBDrought   bool   // True if 30+ days since last BEB run
 }
 
 // LiveBus represents a currently running bus
@@ -215,6 +221,16 @@ func main() {
 
 	// Find last weekend BEB run
 	data.LastWeekendBEB, data.LastWeekendBEBID = findLastWeekendBEB(tripsByDate)
+
+	// Find last any BEB run and calculate if we should show drought message
+	lastBEBDate, lastBEBVehicle := findLastAnyBEB(tripsByDate)
+	if lastBEBDate != "" {
+		data.LastAnyBEB = formatDateHuman(lastBEBDate)
+		data.LastAnyBEBID = lastBEBVehicle
+		lastBEBTime := serviceDateToTime(lastBEBDate)
+		data.DaysSinceLastBEB = int(time.Since(lastBEBTime).Hours() / 24)
+		data.ShowBEBDrought = data.DaysSinceLastBEB >= 30
+	}
 
 	// Calculate time period splits
 	now := time.Now()
@@ -687,6 +703,40 @@ func findLastWeekendBEB(tripsByDate map[string][]TripInfo) (dateStr string, vehi
 	return "", ""
 }
 
+// findLastAnyBEB finds the most recent date when any BEB ran (weekday or weekend)
+func findLastAnyBEB(tripsByDate map[string][]TripInfo) (dateStr string, vehicleID string) {
+	var latestDate string
+	var latestVehicle string
+
+	// Known bad data points (coding errors, not actual BEB service)
+	badData := map[string]struct{}{
+		"20250607|1803": {}, // June 7, 2025 - data error
+	}
+
+	for date, trips := range tripsByDate {
+		for _, trip := range trips {
+			if trip.Type != "BEB" {
+				continue
+			}
+			// Skip known bad data
+			key := date + "|" + trip.VehicleID
+			if _, isBad := badData[key]; isBad {
+				continue
+			}
+			// Found a BEB trip
+			if date > latestDate {
+				latestDate = date
+				latestVehicle = trip.VehicleID
+			}
+		}
+	}
+
+	if latestDate != "" {
+		return latestDate, latestVehicle
+	}
+	return "", ""
+}
+
 // formatDateHuman converts YYYYMMDD to "January 2, 2006" format
 func formatDateHuman(date string) string {
 	if len(date) != 8 {
@@ -1022,6 +1072,12 @@ const htmlTemplate = `<!DOCTYPE html>
         <p>BEB vs Diesel Bus Analysis | Generated: {{formatTime .GeneratedAt}}</p>
         <p>Data range: {{.DataStartDate}} to {{.DataEndDate}} ({{.TotalValidDays}} days)</p>
     </header>
+
+    {{if .ShowBEBDrought}}
+    <div class="section" style="background: #fff5f5; border-left: 4px solid #fc8181;">
+        <p><strong>No BEB has run on Routes {{.Routes}} for {{.DaysSinceLastBEB}} days.</strong> The last BEB service was on {{.LastAnyBEB}} (Bus {{.LastAnyBEBID}}).</p>
+    </div>
+    {{end}}
 
     <div class="section">
         <h2><span class="live-indicator"></span>Live Status</h2>

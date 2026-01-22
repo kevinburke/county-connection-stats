@@ -51,3 +51,12 @@ dashboard-run:
 
 .PHONY: dashboard-sync
 dashboard-sync: sync-tracking dashboard-run
+
+.PHONY: serve
+serve: dashboard-run
+	@echo "Serving dashboard at http://localhost:8080/var/dashboard.html"
+	python3 -m http.server 8080
+
+.PHONY: test
+test:
+	go test -trimpath ./...
