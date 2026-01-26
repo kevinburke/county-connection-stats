@@ -12,3 +12,4 @@ response.bin
 token
 /analyze-historic
 /.claude
+exports/

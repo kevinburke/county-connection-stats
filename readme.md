@@ -255,6 +255,37 @@ sudo journalctl -u county-connection-dashboard.service -f
 sudo systemctl restart county-connection-dashboard.timer
 ```
 
+## Makefile Targets
+
+```bash
+# Data sync
+make sync-tracking      # Download tracking data from server
+
+# On-time analysis
+make ontime             # Route 5 on-time analysis (default)
+make ontime-4           # Route 4 on-time analysis
+make ontime-5           # Route 5 on-time analysis
+
+# Trip time analysis
+make triptime           # Route 5 trip times
+make triptime-4         # Route 4 trip times
+
+# Timetable generation
+make timetable          # Generate alternative 40-min timetable
+
+# Dashboard
+make dashboard-sync     # Sync data and regenerate dashboard
+make dashboard-run      # Just regenerate dashboard
+
+# Build
+make build              # Build Linux binaries for deployment
+make linux-amd64        # Same as build
+
+# Testing
+make test               # Run tests
+make fmt                # Format code
+```
+
 ## API Rate Limits
 
 - Default: 60 requests per hour per API key
@@ -265,6 +296,99 @@ sudo systemctl restart county-connection-dashboard.timer
 - The 511 API updates vehicle positions approximately every 30 seconds
 - Not all vehicles may report all data fields (speed, bearing, etc.)
 - Vehicle IDs should match the physical bus numbers on the vehicles
+
+## On-Time Performance Analysis
+
+### On-Time Analysis (`cmd/analyze-ontime`)
+
+Analyzes how often buses arrive within ±5 minutes of scheduled times at each terminus.
+
+```bash
+# Sync data and run Route 5 analysis
+make ontime-5
+
+# Route 4 analysis
+make ontime-4
+
+# Custom on-time window (e.g., 3 minutes)
+go run ./cmd/analyze-ontime -route 5 -on-time-window 3
+```
+
+**Findings (Nov 2025 - Jan 2026):**
+
+| Route | Overall On-Time | To BART | From BART |
+|-------|-----------------|---------|-----------|
+| Route 5 | 85.3% | 79.2% | 94.7% (Creekside) |
+| Route 4 | 76.0% | 65.3% | 91.9% (S Broadway) |
+
+- Buses are more reliable heading **away** from BART than returning
+- Route 4 has worse on-time performance due to tighter 20-min headways
+- Afternoon rush (12pm-6pm) sees 32-40% of Route 4 WC BART arrivals running late
+
+### Round Trip Analysis (`cmd/analyze-roundtrip`)
+
+Measures actual round trip times from BART departure to BART return.
+
+```bash
+go run ./cmd/analyze-roundtrip -route 5
+go run ./cmd/analyze-roundtrip -route 4
+```
+
+**Findings:**
+
+| Route | Median Round Trip | Scheduled Headway | Dwell Time at BART |
+|-------|-------------------|-------------------|-------------------|
+| Route 5 | 28 min | 45 min | ~17 min |
+| Route 4 | 24 min | 20 min (2 buses) | ~0 min |
+
+Route 5 completes round trips in 28 minutes but only departs every 45 minutes, leaving 17 minutes of idle time at BART per cycle (originally designed for BEB wireless charging).
+
+### Trip Time Analysis (`cmd/analyze-triptime`)
+
+Measures one-way trip times between termini.
+
+```bash
+make triptime      # Route 5
+make triptime-4    # Route 4
+```
+
+### Timetable Generator (`cmd/timetable-generator`)
+
+Generates hypothetical timetables with different headways to show potential service improvements.
+
+```bash
+go run ./cmd/timetable-generator                    # 40-min headway (default)
+go run ./cmd/timetable-generator -headway 30        # 30-min headway
+go run ./cmd/timetable-generator -headway 35        # 35-min headway
+```
+
+With 40-minute headways instead of 45, Route 5 could run 21 departures instead of 19 (+10.5% more service).
+
+## Schedule Files
+
+Schedule data for matching arrivals to scheduled times:
+
+- `schedules/route5.csv` - Route 5 schedule (same for weekday/weekend)
+- `schedules/route4-weekday.csv` - Route 4 weekday schedule (41 departures, 20-min headway)
+- `schedules/route4-weekend.csv` - Route 4 weekend schedule (28 departures, 20-min headway)
+
+## Terminus Detection Polygons
+
+The analysis tools detect arrivals using GPS polygons for:
+
+- **WC BART** - Walnut Creek BART bus area
+- **Creekside** - Route 5 terminus (Creekside Dr)
+- **S Broadway & Mt Diablo** - Route 4 terminus
+
+## Key Insights
+
+1. **Schedule slack**: Route 5 buses complete round trips in ~28 minutes but the schedule allocates 45 minutes between departures, leaving 17 minutes of dwell/buffer at BART per round trip.
+
+2. **Directional reliability**: Both routes are significantly more reliable heading away from BART (92-95% on-time) than returning to BART (65-79% on-time), suggesting traffic congestion affects inbound service more.
+
+3. **Afternoon delays**: Route 4 sees 32-40% of WC BART arrivals running late during 12pm-6pm, compared to only 6-12% in the morning.
+
+4. **Frequency opportunity**: If Route 5 reduced headways from 45 to 40 minutes (eliminating BEB charging dwell time), it could provide 10.5% more trips with the same resources.
 
 ## Resources
 
