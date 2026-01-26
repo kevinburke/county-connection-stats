@@ -79,6 +79,11 @@ type DashboardData struct {
 	LastAnyBEBID     string // Vehicle ID of the BEB
 	DaysSinceLastBEB int    // Number of days since last BEB run
 	ShowBEBDrought   bool   // True if 30+ days since last BEB run
+
+	// Route 5 specific BEB tracking
+	LastRoute5BEB      string // Last date a BEB ran on Route 5, empty if never
+	LastRoute5BEBID    string // Vehicle ID of the BEB
+	DaysSinceRoute5BEB int    // Number of days since last BEB run on Route 5
 }
 
 // LiveBus represents a currently running bus
@@ -124,16 +129,17 @@ type BusStats struct {
 
 // BusResult holds computed results for a bus
 type BusResult struct {
-	VehicleID    string
-	Type         string
-	TripCount    int
-	ServiceDays  int
-	Availability float64
-	OutOfService int
-	OutageRanges []OutageRange
-	TotalMiles   float64
-	FailureCount int
-	MDBF         float64
+	VehicleID       string
+	Type            string
+	TripCount       int
+	ServiceDays     int
+	Availability    float64
+	OutOfService    int
+	OutageRanges    []OutageRange
+	TotalMiles      float64
+	FailureCount    int
+	MDBF            float64
+	LastServiceDate string // YYYYMMDD format, most recent day this bus ran
 }
 
 // OutageRange represents a period of no service
@@ -232,6 +238,15 @@ func main() {
 		data.ShowBEBDrought = data.DaysSinceLastBEB >= 30
 	}
 
+	// Find last Route 5 BEB run
+	lastRoute5Date, lastRoute5Vehicle := findLastRouteBEB(tripsByDate, "5")
+	if lastRoute5Date != "" {
+		data.LastRoute5BEB = formatDateHuman(lastRoute5Date)
+		data.LastRoute5BEBID = lastRoute5Vehicle
+		lastRoute5Time := serviceDateToTime(lastRoute5Date)
+		data.DaysSinceRoute5BEB = int(time.Since(lastRoute5Time).Hours() / 24)
+	}
+
 	// Calculate time period splits
 	now := time.Now()
 	data.WeekSplit = computeTimePeriodSplit(tripsByDate, now.AddDate(0, 0, -7), now)
@@ -301,6 +316,8 @@ func loadTrackingData(filename string) ([]LiveBus, map[string][]TripInfo, error)
 		if _, exists := tripsSeen[tripKey]; !exists {
 			tripsSeen[tripKey] = struct{}{}
 
+			route := fields[4] // route column
+
 			// Parse date for weekday
 			dateParts := strings.Split(dateStr, "-")
 			if len(dateParts) == 3 {
@@ -314,6 +331,7 @@ func loadTrackingData(filename string) ([]LiveBus, map[string][]TripInfo, error)
 					VehicleID: vehicleID,
 					Type:      busType,
 					Weekday:   t.Weekday(),
+					Route:     route,
 				})
 			}
 		}
@@ -357,6 +375,7 @@ type TripInfo struct {
 	VehicleID string
 	Type      string
 	Weekday   time.Weekday
+	Route     string
 }
 
 func loadHistoricData(filename string) (map[string]*BusStats, map[string][]TripInfo, []string, error) {
@@ -428,11 +447,13 @@ func loadHistoricData(filename string) (map[string]*BusStats, map[string][]TripI
 
 		// Track trips by date for aggregation
 		weekday := parseServiceDate(serviceDate)
+		routeID := valueAt(record, cols["route_id"])
 		tripsByDate[serviceDate] = append(tripsByDate[serviceDate], TripInfo{
 			Date:      serviceDate,
 			VehicleID: vehicleID,
 			Type:      busType,
 			Weekday:   weekday,
+			Route:     routeID,
 		})
 	}
 
@@ -500,6 +521,13 @@ func computeBusResult(stats *BusStats, validDates []string, totalValidDays int) 
 	result.ServiceDays = serviceDays
 	if totalValidDays > 0 {
 		result.Availability = float64(serviceDays) / float64(totalValidDays) * 100
+	}
+
+	// Find last service date
+	for date := range stats.DayTripMaps {
+		if date > result.LastServiceDate {
+			result.LastServiceDate = date
+		}
 	}
 
 	outageStart := ""
@@ -724,6 +752,45 @@ func findLastAnyBEB(tripsByDate map[string][]TripInfo) (dateStr string, vehicleI
 				continue
 			}
 			// Found a BEB trip
+			if date > latestDate {
+				latestDate = date
+				latestVehicle = trip.VehicleID
+			}
+		}
+	}
+
+	if latestDate != "" {
+		return latestDate, latestVehicle
+	}
+	return "", ""
+}
+
+// findLastRouteBEB finds the most recent date when a BEB ran on a specific route
+func findLastRouteBEB(tripsByDate map[string][]TripInfo, targetRoute string) (dateStr string, vehicleID string) {
+	var latestDate string
+	var latestVehicle string
+
+	// Known bad data points (coding errors, not actual BEB service)
+	badData := map[string]struct{}{
+		"20250607|1803": {}, // June 7, 2025 - data error
+	}
+
+	for date, trips := range tripsByDate {
+		for _, trip := range trips {
+			if trip.Type != "BEB" {
+				continue
+			}
+			// Check if this is the target route
+			// Route can be "5" from tracking file or "CC:5" from historic data
+			if trip.Route != targetRoute && trip.Route != "CC:"+targetRoute {
+				continue
+			}
+			// Skip known bad data
+			key := date + "|" + trip.VehicleID
+			if _, isBad := badData[key]; isBad {
+				continue
+			}
+			// Found a BEB trip on target route
 			if date > latestDate {
 				latestDate = date
 				latestVehicle = trip.VehicleID
@@ -1180,6 +1247,7 @@ const htmlTemplate = `<!DOCTYPE html>
                     <th>Availability</th>
                     <th>Failures</th>
                     <th>MDBF (miles)</th>
+                    <th>Last In Service</th>
                 </tr>
             </thead>
             <tbody>
@@ -1191,6 +1259,7 @@ const htmlTemplate = `<!DOCTYPE html>
                     <td>{{formatPct .Availability}}</td>
                     <td>{{.FailureCount}}</td>
                     <td>{{if gtZero .MDBF}}{{formatFloat .MDBF}}{{else}}-{{end}}</td>
+                    <td>{{if .LastServiceDate}}{{formatDate .LastServiceDate}}{{else}}-{{end}}</td>
                 </tr>
                 {{end}}
             </tbody>
@@ -1272,6 +1341,11 @@ const htmlTemplate = `<!DOCTYPE html>
         {{if .ShowBEBDrought}}
         <div class="wasted-highlight" style="margin-top: 16px;">
             <p><strong>No BEB has run on Routes {{.Routes}} for {{.DaysSinceLastBEB}} days.</strong> The last BEB service was on {{.LastAnyBEB}} (Bus {{.LastAnyBEBID}}).</p>
+        </div>
+        {{end}}
+        {{if and .LastRoute5BEB (gt .DaysSinceRoute5BEB 7)}}
+        <div class="wasted-highlight" style="margin-top: 16px;">
+            <p><strong>No BEB on Route 5 since {{.LastRoute5BEB}}</strong> ({{.DaysSinceRoute5BEB}} days ago, Bus {{.LastRoute5BEBID}}).</p>
         </div>
         {{end}}
     </div>
