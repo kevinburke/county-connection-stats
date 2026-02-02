@@ -41,9 +41,21 @@ clean:
 TRACKER_HOST ?= tiger-root
 TRACKER_PATH ?= /home/county-connection/var/data/vehicle-tracking.tsv
 
+# Backup server for historic data
+BACKUP_HOST ?= ts-ostrich
+BACKUP_PATH ?= /volumeUSB1/usbshare/data-files/county-connection-reliability
+
 .PHONY: sync-tracking
 sync-tracking:
 	scp $(TRACKER_HOST):$(TRACKER_PATH) vehicle-tracking.tsv
+
+.PHONY: backup-data
+backup-data:
+	rsync -av --rsync-path=/usr/bin/rsync -e "ssh -o ServerAliveInterval=60 -o ServerAliveCountMax=3" --progress ./var/ $(BACKUP_HOST):$(BACKUP_PATH)/
+
+.PHONY: restore-data
+restore-data:
+	rsync -av --rsync-path=/usr/bin/rsync -e "ssh -o ServerAliveInterval=60 -o ServerAliveCountMax=3" --progress $(BACKUP_HOST):$(BACKUP_PATH)/ ./var/
 
 .PHONY: dashboard-run
 dashboard-run:
