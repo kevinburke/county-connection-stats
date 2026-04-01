@@ -9,6 +9,7 @@ import (
 	"io"
 	"log/slog"
 	"os"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -194,21 +195,8 @@ func main() {
 		os.Exit(1)
 	}
 
-	// Merge realtime trips into tripsByDate
-	for dateStr, trips := range realtimeTrips {
-		tripsByDate[dateStr] = append(tripsByDate[dateStr], trips...)
-		// Add to validDates if not already present
-		found := false
-		for _, d := range validDates {
-			if d == dateStr {
-				found = true
-				break
-			}
-		}
-		if !found {
-			validDates = append(validDates, dateStr)
-		}
-	}
+	// Merge realtime trips into tripsByDate and busStats
+	validDates = mergeRealtimeTrips(realtimeTrips, tripsByDate, busStats, validDates)
 	sort.Strings(validDates)
 
 	if len(validDates) > 0 {
@@ -465,6 +453,32 @@ func loadHistoricData(filename string) (map[string]*BusStats, map[string][]TripI
 	sort.Strings(validDates)
 
 	return busStats, tripsByDate, validDates, nil
+}
+
+// mergeRealtimeTrips merges live tracking data into tripsByDate and busStats,
+// and returns an updated validDates slice (unsorted).
+func mergeRealtimeTrips(realtimeTrips map[string][]TripInfo, tripsByDate map[string][]TripInfo, busStats map[string]*BusStats, validDates []string) []string {
+	for dateStr, trips := range realtimeTrips {
+		tripsByDate[dateStr] = append(tripsByDate[dateStr], trips...)
+		if !slices.Contains(validDates, dateStr) {
+			validDates = append(validDates, dateStr)
+		}
+		// Update per-vehicle busStats so LastServiceDate reflects live data
+		for _, trip := range trips {
+			bs := busStats[trip.VehicleID]
+			if bs == nil {
+				bs = &BusStats{
+					VehicleID:   trip.VehicleID,
+					Type:        trip.Type,
+					DayTripMaps: make(map[string]int),
+				}
+				busStats[trip.VehicleID] = bs
+			}
+			bs.TripCount++
+			bs.DayTripMaps[dateStr]++
+		}
+	}
+	return validDates
 }
 
 func parseServiceDate(date string) time.Weekday {

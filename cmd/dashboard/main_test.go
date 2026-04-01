@@ -180,6 +180,69 @@ func TestFindLastAnyBEB(t *testing.T) {
 	}
 }
 
+func TestMergeRealtimeTripsUpdatesBusStats(t *testing.T) {
+	// Simulate historic data: bus 1600 last seen on Jan 1
+	busStats := map[string]*BusStats{
+		"1600": {
+			VehicleID:   "1600",
+			Type:        "BEB",
+			TripCount:   2,
+			DayTripMaps: map[string]int{"20240101": 2},
+		},
+	}
+	tripsByDate := map[string][]TripInfo{
+		"20240101": {
+			{Date: "20240101", VehicleID: "1600", Type: "BEB", Weekday: time.Monday},
+			{Date: "20240101", VehicleID: "1600", Type: "BEB", Weekday: time.Monday},
+		},
+	}
+	validDates := []string{"20240101"}
+
+	// Simulate realtime data: bus 1600 seen today, and bus 1801 (new) seen today
+	realtimeTrips := map[string][]TripInfo{
+		"20240401": {
+			{Date: "20240401", VehicleID: "1600", Type: "BEB", Weekday: time.Monday},
+			{Date: "20240401", VehicleID: "1801", Type: "BEB", Weekday: time.Monday},
+		},
+	}
+
+	validDates = mergeRealtimeTrips(realtimeTrips, tripsByDate, busStats, validDates)
+
+	// Bus 1600's DayTripMaps should now include the realtime date
+	if _, ok := busStats["1600"].DayTripMaps["20240401"]; !ok {
+		t.Error("bus 1600 DayTripMaps missing realtime date 20240401")
+	}
+	if busStats["1600"].TripCount != 3 {
+		t.Errorf("bus 1600 TripCount: got %d, want 3", busStats["1600"].TripCount)
+	}
+
+	// Bus 1801 should have been created in busStats from realtime data
+	if _, ok := busStats["1801"]; !ok {
+		t.Fatal("bus 1801 not added to busStats from realtime data")
+	}
+	if busStats["1801"].DayTripMaps["20240401"] != 1 {
+		t.Errorf("bus 1801 DayTripMaps[20240401]: got %d, want 1", busStats["1801"].DayTripMaps["20240401"])
+	}
+
+	// validDates should include the new date
+	found := false
+	for _, d := range validDates {
+		if d == "20240401" {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Error("validDates missing 20240401")
+	}
+
+	// Verify that computeBusResult picks up the new last service date
+	result := computeBusResult(busStats["1600"], validDates, len(validDates))
+	if result.LastServiceDate != "20240401" {
+		t.Errorf("LastServiceDate: got %s, want 20240401", result.LastServiceDate)
+	}
+}
+
 func TestFindLastAnyBEBNoBEBs(t *testing.T) {
 	tripsByDate := map[string][]TripInfo{
 		"20240101": {
