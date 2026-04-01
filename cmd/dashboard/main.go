@@ -308,20 +308,42 @@ func main() {
 
 		// Compute median round trip and idle % for "after" period,
 		// and before/after idle vs route hours breakdown.
+		//
+		// Per-bus approach: for each bus on each day, service time runs
+		// from first BART departure to last BART return. Idle time is
+		// service time minus time spent on route (sum of round trip
+		// durations). This avoids assumptions about bus count or
+		// service window.
 		const cycleTime = 45.0 // minutes per cycle (3 buses * 15 min headway)
-		var beforeDurations, afterDurations []int
-		var beforeTotalMin, afterTotalMin float64
-		beforeDays := make(map[string]struct{})
-		afterDays := make(map[string]struct{})
+
+		// busDay tracks per-bus per-day stats.
+		type busDay struct {
+			firstDepart time.Time
+			lastReturn  time.Time
+			routeMin    float64
+		}
+		busDays := make(map[string]*busDay) // key: "date|vehicle"
+		var afterDurations []int
+
 		for _, rt := range roundTrips {
-			if rt.Departure.Before(route4Cutoff) {
-				beforeDurations = append(beforeDurations, rt.Duration)
-				beforeTotalMin += float64(rt.Duration)
-				beforeDays[rt.Departure.Format("2006-01-02")] = struct{}{}
-			} else {
+			day := rt.Departure.Format("2006-01-02")
+			returnTime := rt.Departure.Add(time.Duration(rt.Duration) * time.Minute)
+			key := day + "|" + rt.Vehicle
+			bd := busDays[key]
+			if bd == nil {
+				bd = &busDay{firstDepart: rt.Departure, lastReturn: returnTime}
+				busDays[key] = bd
+			}
+			if rt.Departure.Before(bd.firstDepart) {
+				bd.firstDepart = rt.Departure
+			}
+			if returnTime.After(bd.lastReturn) {
+				bd.lastReturn = returnTime
+			}
+			bd.routeMin += float64(rt.Duration)
+
+			if !rt.Departure.Before(route4Cutoff) {
 				afterDurations = append(afterDurations, rt.Duration)
-				afterTotalMin += float64(rt.Duration)
-				afterDays[rt.Departure.Format("2006-01-02")] = struct{}{}
 			}
 		}
 		if len(afterDurations) > 0 {
@@ -331,20 +353,22 @@ func main() {
 			data.NewRouteIdlePct = medianIdle / cycleTime * 100
 		}
 
-		// Before/after hours breakdown: 3 buses * service days * 850 min/day
-		// gives total bus-minutes; route time is sum of round trip durations,
-		// idle is the remainder.
-		const serviceMinPerDay = 850.0
-		const numBuses = 3
-		if len(beforeDays) > 0 {
-			totalBusMin := float64(len(beforeDays)) * serviceMinPerDay * numBuses
-			data.BeforeRouteHours = beforeTotalMin / 60
-			data.BeforeIdleHours = (totalBusMin - beforeTotalMin) / 60
-		}
-		if len(afterDays) > 0 {
-			totalBusMin := float64(len(afterDays)) * serviceMinPerDay * numBuses
-			data.AfterRouteHours = afterTotalMin / 60
-			data.AfterIdleHours = (totalBusMin - afterTotalMin) / 60
+		// Sum up before/after route and idle hours from per-bus data.
+		for key, bd := range busDays {
+			day := key[:10]
+			serviceMin := bd.lastReturn.Sub(bd.firstDepart).Minutes()
+			idleMin := serviceMin - bd.routeMin
+			if idleMin < 0 {
+				idleMin = 0
+			}
+			dayDate, _ := time.ParseInLocation("2006-01-02", day, pacificTZ)
+			if dayDate.Before(route4Cutoff) {
+				data.BeforeRouteHours += bd.routeMin / 60
+				data.BeforeIdleHours += idleMin / 60
+			} else {
+				data.AfterRouteHours += bd.routeMin / 60
+				data.AfterIdleHours += idleMin / 60
+			}
 		}
 
 		slog.Info("Round trip data loaded", "total", len(roundTrips))
@@ -1847,15 +1871,15 @@ const htmlTemplate = `<!DOCTYPE html>
             <div style="flex:1">
                 <div style="text-align:center;margin-bottom:8px;font-weight:bold;color:steelblue">Before (23 min scheduled RT)</div>
                 <div class="bar-container" style="height:auto;align-items:center">
-                    <div style="background:#4682b4;width:{{formatFloat (divf .BeforeRouteHours (addf .BeforeRouteHours .BeforeIdleHours) 100)}}%;padding:8px 12px;color:white;text-align:center;font-size:13px">On route: {{formatFloat .BeforeRouteHours}} hrs</div>
-                    <div style="background:#ccc;width:{{formatFloat (divf .BeforeIdleHours (addf .BeforeRouteHours .BeforeIdleHours) 100)}}%;padding:8px 12px;text-align:center;font-size:13px">Idle: {{formatFloat .BeforeIdleHours}} hrs</div>
+                    <div style="background:#4682b4;width:{{formatFloat (divf .BeforeRouteHours (addf .BeforeRouteHours .BeforeIdleHours) 100)}}%;padding:8px 12px;color:white;text-align:center;font-size:13px">On route: {{formatFloat .BeforeRouteHours}} hrs ({{formatHours (divf .BeforeRouteHours (addf .BeforeRouteHours .BeforeIdleHours) 100)}}%)</div>
+                    <div style="background:#ccc;width:{{formatFloat (divf .BeforeIdleHours (addf .BeforeRouteHours .BeforeIdleHours) 100)}}%;padding:8px 12px;text-align:center;font-size:13px">Idle: {{formatFloat .BeforeIdleHours}} hrs ({{formatHours (divf .BeforeIdleHours (addf .BeforeRouteHours .BeforeIdleHours) 100)}}%)</div>
                 </div>
             </div>
             <div style="flex:1">
                 <div style="text-align:center;margin-bottom:8px;font-weight:bold;color:#dc4c3c">After (25 min scheduled RT)</div>
                 <div class="bar-container" style="height:auto;align-items:center">
-                    <div style="background:#dc4c3c;width:{{formatFloat (divf .AfterRouteHours (addf .AfterRouteHours .AfterIdleHours) 100)}}%;padding:8px 12px;color:white;text-align:center;font-size:13px">On route: {{formatFloat .AfterRouteHours}} hrs</div>
-                    <div style="background:#ccc;width:{{formatFloat (divf .AfterIdleHours (addf .AfterRouteHours .AfterIdleHours) 100)}}%;padding:8px 12px;text-align:center;font-size:13px">Idle: {{formatFloat .AfterIdleHours}} hrs</div>
+                    <div style="background:#dc4c3c;width:{{formatFloat (divf .AfterRouteHours (addf .AfterRouteHours .AfterIdleHours) 100)}}%;padding:8px 12px;color:white;text-align:center;font-size:13px">On route: {{formatFloat .AfterRouteHours}} hrs ({{formatHours (divf .AfterRouteHours (addf .AfterRouteHours .AfterIdleHours) 100)}}%)</div>
+                    <div style="background:#ccc;width:{{formatFloat (divf .AfterIdleHours (addf .AfterRouteHours .AfterIdleHours) 100)}}%;padding:8px 12px;text-align:center;font-size:13px">Idle: {{formatFloat .AfterIdleHours}} hrs ({{formatHours (divf .AfterIdleHours (addf .AfterRouteHours .AfterIdleHours) 100)}}%)</div>
                 </div>
             </div>
         </div>
