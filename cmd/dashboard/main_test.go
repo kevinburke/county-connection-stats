@@ -40,6 +40,18 @@ func TestTemplateRenders(t *testing.T) {
 		"formatHours": func(f float64) string {
 			return "0"
 		},
+		"formatMinPerDay": func(f float64) string {
+			return "0 min/day"
+		},
+		"divf": func(a, b, mult float64) float64 {
+			if b == 0 {
+				return 0
+			}
+			return a / b * mult
+		},
+		"addf": func(a, b float64) float64 {
+			return a + b
+		},
 		"formatDate": func(date string) string {
 			return date
 		},
@@ -110,6 +122,18 @@ func TestTemplateRendersWithBEBDrought(t *testing.T) {
 		},
 		"formatHours": func(f float64) string {
 			return "0"
+		},
+		"formatMinPerDay": func(f float64) string {
+			return "0 min/day"
+		},
+		"divf": func(a, b, mult float64) float64 {
+			if b == 0 {
+				return 0
+			}
+			return a / b * mult
+		},
+		"addf": func(a, b float64) float64 {
+			return a + b
 		},
 		"formatDate": func(date string) string {
 			return date
